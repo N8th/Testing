@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Clip Trimmer - Version 1.0</title>
+  <title>Video Clip Trimmer - Version 1.0.2</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -43,12 +43,13 @@
 </head>
 <body>
 
-  <h1>Upload and Trim Videos (Version 1.0)</h1>
+  <h1>Upload and Trim Videos (Version 1.0.2)</h1>
   
   <div id="upload-box">Drag and drop your videos here or click to upload</div>
   <input type="file" id="video-input" accept="video/*" multiple style="display: none;">
   <button id="process-button" disabled>Process and Save Clips</button>
 
+  <script src="https://cdn.jsdelivr.net/npm/ffmpeg.js/ffmpeg.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
@@ -94,16 +95,10 @@
       zip = new JSZip();
 
       for (let file of videoFiles) {
-        const videoURL = URL.createObjectURL(file);
-        const videoElement = await loadVideo(videoURL);
-        const duration = videoElement.duration;
-        const numberOfClips = Math.floor(duration / 10);
-
-        for (let i = 0; i < numberOfClips; i++) {
-          const start = Math.random() * (duration - 10);
-          const length = 4 + Math.random() * 6; // random length between 4 and 10
-          await trimAndSaveClip(videoElement, start, length, file.name, i);
-        }
+        const trimmedVideos = await processVideo(file);
+        trimmedVideos.forEach((blob, index) => {
+          zip.file(`${file.name.split('.')[0]}-clip-${index}.mp4`, blob);
+        });
       }
 
       // Save the zip
@@ -114,38 +109,29 @@
       processButton.disabled = false;
     });
 
-    function loadVideo(src) {
-      return new Promise((resolve) => {
-        const video = document.createElement('video');
-        video.src = src;
-        video.addEventListener('loadedmetadata', () => resolve(video));
-      });
-    }
+    async function processVideo(file) {
+      const ffmpeg = await FFmpeg.createFFmpeg({ log: true });
+      await ffmpeg.load();
 
-    function trimAndSaveClip(videoElement, start, length, fileName, clipIndex) {
-      return new Promise((resolve) => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = videoElement.videoWidth;
-        canvas.height = videoElement.videoHeight;
+      const { name } = file;
+      const videoData = await file.arrayBuffer();
 
-        // Set video start time and play the video
-        videoElement.currentTime = start;
+      ffmpeg.FS('writeFile', name, new Uint8Array(videoData));
 
-        videoElement.addEventListener('seeked', () => {
-          // Draw frame on canvas
-          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-          saveClipToZip(canvas, fileName, clipIndex);
-          resolve();
-        });
-      });
-    }
+      // Trim into random 4-10 second clips
+      const duration = 10;  // Example duration for trimming
+      const startTime = Math.random() * (duration - 10);  // Random start time
+      const trimmedClips = [];
 
-    function saveClipToZip(canvas, fileName, clipIndex) {
-      canvas.toBlob((blob) => {
-        const clipName = `${fileName.split('.')[0]}-clip-${clipIndex}.png`; // Using PNG because video trimming needs advanced media libraries
-        zip.file(clipName, blob);
-      }, 'image/png'); // Saving as an image because handling video clips in the browser requires video encoding which is more complex
+      for (let i = 0; i < 3; i++) {  // Example trimming into 3 clips
+        const output = `clip-${i}.mp4`;
+        await ffmpeg.run('-i', name, '-ss', `${startTime}`, '-t', '10', '-c', 'copy', output);
+        const data = ffmpeg.FS('readFile', output);
+        trimmedClips.push(new Blob([data.buffer], { type: 'video/mp4' }));
+        ffmpeg.FS('unlink', output);
+      }
+
+      return trimmedClips;
     }
   </script>
 
