@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Random Video Clips Compilation - Version 1.0.3</title>
+  <title>Trim and Save Video Clips - Version 1.0.4</title>
   <style>
     #dropZone {
       width: 100%;
@@ -14,14 +14,6 @@
       color: #999;
       margin-bottom: 20px;
     }
-    video {
-      display: none; /* Hide the video element */
-    }
-    canvas {
-      display: block;
-      margin-bottom: 10px;
-      background-color: black; /* Fill gaps with black */
-    }
     .controls {
       margin-bottom: 10px;
     }
@@ -31,7 +23,7 @@
   </style>
 </head>
 <body>
-  <h1>Upload Videos and Compile Random Clips (Version 1.0.3)</h1>
+  <h1>Upload and Trim Videos into Random Clips (Version 1.0.4)</h1>
   
   <!-- Drop zone for files -->
   <div id="dropZone">Drag and drop videos here (up to 50)</div>
@@ -44,28 +36,22 @@
     <input type="number" id="maxTime" min="3" value="15">
   </div>
   
-  <button id="compileButton" disabled>Compile Random Clips</button>
-  <button id="saveButton">Save Compiled Video</button>
+  <button id="trimButton" disabled>Trim Videos and Save as Zip</button>
+  <button id="saveButton">Save Trimmed Clips</button>
 
-  <!-- Hidden video element to load videos -->
-  <video id="video" controls></video>
-
-  <!-- Canvas element to display the videos -->
-  <canvas id="canvas" width="640" height="360"></canvas>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ffmpeg.js/ffmpeg.min.js"></script>
 
   <script>
     const dropZone = document.getElementById('dropZone');
-    const compileButton = document.getElementById('compileButton');
+    const trimButton = document.getElementById('trimButton');
     const saveButton = document.getElementById('saveButton');
-    const videoElement = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
     const minTimeInput = document.getElementById('minTime');
     const maxTimeInput = document.getElementById('maxTime');
 
     let videoFiles = [];
-    let mediaRecorder;
-    let recordedChunks = [];
+    let zip = new JSZip();
 
     // Prevent default drag behaviors
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -89,105 +75,67 @@
       for (const file of files) {
         if (file.type.startsWith('video/')) {
           if (videoFiles.length < 50) { // Limit to 50 videos
-            videoFiles.push(URL.createObjectURL(file)); // Store video file URLs
+            videoFiles.push(file);
           }
         }
       }
       
       if (videoFiles.length > 0) {
-        compileButton.disabled = false; // Enable compile button when videos are dropped
-        dropZone.textContent = `${videoFiles.length} video(s) ready for compilation.`;
+        trimButton.disabled = false; // Enable trim button when videos are dropped
+        dropZone.textContent = `${videoFiles.length} video(s) ready for trimming.`;
       } else {
         dropZone.textContent = 'Please drop video files!';
       }
     });
 
-    compileButton.addEventListener('click', async function() {
+    trimButton.addEventListener('click', async function() {
       if (videoFiles.length > 0) {
-        compileButton.disabled = true; // Disable button during compilation
+        trimButton.disabled = true; // Disable button during trimming
         saveButton.style.display = 'none'; // Hide save button initially
-        recordedChunks = []; // Clear any previous recordings
+        zip = new JSZip();
 
-        const stream = canvas.captureStream(); // Capture canvas stream for recording
-        mediaRecorder = new MediaRecorder(stream);
-        mediaRecorder.ondataavailable = function(event) {
-          if (event.data.size > 0) {
-            recordedChunks.push(event.data);
-          }
-        };
-        mediaRecorder.onstop = saveVideo; // When recording stops, offer save option
-        mediaRecorder.start(); // Start recording
+        for (const file of videoFiles) {
+          await trimAndSaveClip(file);
+        }
 
-        await compileRandomClips();
-
-        mediaRecorder.stop(); // Stop recording once all clips are played
-        compileButton.disabled = false; // Re-enable button after compilation
+        // Save the zip
+        const zipContent = await zip.generateAsync({ type: 'blob' });
+        saveAs(zipContent, 'trimmed_clips.zip');
+        trimButton.disabled = false; // Re-enable button after trimming
       }
     });
 
-    async function compileRandomClips() {
-      let currentIndex = 0;
+    async function trimAndSaveClip(file) {
+      const ffmpeg = await FFmpeg.createFFmpeg({ log: true });
+      await ffmpeg.load();
 
-      const playNextClip = () => {
-        if (currentIndex >= videoFiles.length) {
-          return; // All clips played
-        }
+      const videoData = await file.arrayBuffer();
+      ffmpeg.FS('writeFile', file.name, new Uint8Array(videoData));
 
-        const videoSrc = videoFiles[currentIndex];
-        videoElement.src = videoSrc;
+      const videoDuration = await getVideoDuration(file);
+      const minTime = parseInt(minTimeInput.value, 10);
+      const maxTime = parseInt(maxTimeInput.value, 10);
+      
+      const randomStart = Math.random() * Math.max(0, videoDuration - 1); // Start from random point
+      const clipDuration = Math.min(Math.random() * (maxTime - minTime) + minTime, videoDuration - randomStart);
+      
+      const outputName = `trimmed-${file.name.split('.')[0]}.mp4`;
+      await ffmpeg.run('-i', file.name, '-ss', `${randomStart}`, '-t', `${clipDuration}`, '-c', 'copy', outputName);
+      const data = ffmpeg.FS('readFile', outputName);
 
-        videoElement.addEventListener('loadedmetadata', () => {
-          const videoDuration = videoElement.duration;
-          const minTime = parseInt(minTimeInput.value, 10);
-          const maxTime = parseInt(maxTimeInput.value, 10);
-          
-          // Ensure the max time doesn't exceed the video length
-          const randomStart = Math.random() * Math.max(0, videoDuration - 1); // Start from random point
-          const clipDuration = Math.min(Math.random() * (maxTime - minTime) + minTime, videoDuration - randomStart);
-
-          videoElement.currentTime = randomStart;
-
-          videoElement.play();
-
-          const updateCanvas = () => {
-            // Draw the current video frame on the canvas
-            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-            if (!videoElement.paused && !videoElement.ended) {
-              requestAnimationFrame(updateCanvas);
-            }
-          };
-
-          updateCanvas(); // Start drawing frames
-
-          // Play the random clip for its duration
-          setTimeout(() => {
-            videoElement.pause();
-            currentIndex++; // Move to the next video
-            playNextClip(); // Play the next clip after the current one ends
-          }, clipDuration * 1000);
-        }, { once: true });
-      };
-
-      playNextClip(); // Start playing the first clip
+      zip.file(outputName, new Blob([data.buffer], { type: 'video/mp4' }));
+      ffmpeg.FS('unlink', file.name); // Clean up file from ffmpeg
     }
 
-    function saveVideo() {
-      const blob = new Blob(recordedChunks, {
-        type: 'video/webm'
+    async function getVideoDuration(file) {
+      return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.src = URL.createObjectURL(file);
+        video.onloadedmetadata = () => {
+          resolve(video.duration);
+        };
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = 'compiled_video.webm';
-      document.body.appendChild(a);
-      a.click();
-
-      // Make save button available to re-download
-      saveButton.style.display = 'block';
     }
-
-    saveButton.addEventListener('click', saveVideo);
   </script>
 </body>
 </html>
