@@ -3,137 +3,191 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Clip Trimmer - Version 1.0.2</title>
+  <title>Random Video Clips Compilation - Version 1.0.3</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #121212;
-      color: #ffffff;
-      margin: 20px;
-    }
-    h1 {
-      color: #00ff00;
-    }
-    #upload-box {
-      border: 2px dashed #00ff00;
-      padding: 50px;
+    #dropZone {
+      width: 100%;
+      height: 200px;
+      border: 2px dashed #ccc;
       text-align: center;
-      font-size: 18px;
-      color: #00ff00;
-      cursor: pointer;
+      line-height: 200px;
+      color: #999;
       margin-bottom: 20px;
     }
-    #upload-box.dragging {
-      background-color: #333333;
+    video {
+      display: none; /* Hide the video element */
     }
-    button {
-      background-color: #00ff00;
-      color: #121212;
-      border: none;
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-      margin-top: 20px;
+    canvas {
+      display: block;
+      margin-bottom: 10px;
+      background-color: black; /* Fill gaps with black */
     }
-    button:disabled {
-      background-color: #444444;
-      cursor: not-allowed;
+    .controls {
+      margin-bottom: 10px;
+    }
+    #saveButton {
+      display: none;
     }
   </style>
 </head>
 <body>
-
-  <h1>Upload and Trim Videos (Version 1.0.2)</h1>
+  <h1>Upload Videos and Compile Random Clips (Version 1.0.3)</h1>
   
-  <div id="upload-box">Drag and drop your videos here or click to upload</div>
-  <input type="file" id="video-input" accept="video/*" multiple style="display: none;">
-  <button id="process-button" disabled>Process and Save Clips</button>
+  <!-- Drop zone for files -->
+  <div id="dropZone">Drag and drop videos here (up to 50)</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/ffmpeg.js/ffmpeg.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <!-- Min and Max duration controls -->
+  <div class="controls">
+    <label for="minTime">Min Clip Time (seconds): </label>
+    <input type="number" id="minTime" min="1" value="3">
+    <label for="maxTime">Max Clip Time (seconds): </label>
+    <input type="number" id="maxTime" min="3" value="15">
+  </div>
+  
+  <button id="compileButton" disabled>Compile Random Clips</button>
+  <button id="saveButton">Save Compiled Video</button>
+
+  <!-- Hidden video element to load videos -->
+  <video id="video" controls></video>
+
+  <!-- Canvas element to display the videos -->
+  <canvas id="canvas" width="640" height="360"></canvas>
 
   <script>
-    const uploadBox = document.getElementById('upload-box');
-    const videoInput = document.getElementById('video-input');
-    const processButton = document.getElementById('process-button');
+    const dropZone = document.getElementById('dropZone');
+    const compileButton = document.getElementById('compileButton');
+    const saveButton = document.getElementById('saveButton');
+    const videoElement = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const minTimeInput = document.getElementById('minTime');
+    const maxTimeInput = document.getElementById('maxTime');
+
     let videoFiles = [];
-    let zip = new JSZip();
+    let mediaRecorder;
+    let recordedChunks = [];
 
-    // Handle drag-and-drop functionality
-    uploadBox.addEventListener('dragover', (event) => {
-      event.preventDefault();
-      uploadBox.classList.add('dragging');
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => e.preventDefault());
     });
 
-    uploadBox.addEventListener('dragleave', () => {
-      uploadBox.classList.remove('dragging');
+    // Highlight drop area when item is dragged over
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.style.borderColor = '#333');
     });
 
-    uploadBox.addEventListener('drop', (event) => {
-      event.preventDefault();
-      uploadBox.classList.remove('dragging');
-      handleFiles(event.dataTransfer.files);
+    // Unhighlight drop area when dragging leaves
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.style.borderColor = '#ccc');
     });
 
-    uploadBox.addEventListener('click', () => {
-      videoInput.click();
+    // Handle dropped files
+    dropZone.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+
+      for (const file of files) {
+        if (file.type.startsWith('video/')) {
+          if (videoFiles.length < 50) { // Limit to 50 videos
+            videoFiles.push(URL.createObjectURL(file)); // Store video file URLs
+          }
+        }
+      }
+      
+      if (videoFiles.length > 0) {
+        compileButton.disabled = false; // Enable compile button when videos are dropped
+        dropZone.textContent = `${videoFiles.length} video(s) ready for compilation.`;
+      } else {
+        dropZone.textContent = 'Please drop video files!';
+      }
     });
 
-    videoInput.addEventListener('change', (event) => {
-      handleFiles(event.target.files);
+    compileButton.addEventListener('click', async function() {
+      if (videoFiles.length > 0) {
+        compileButton.disabled = true; // Disable button during compilation
+        saveButton.style.display = 'none'; // Hide save button initially
+        recordedChunks = []; // Clear any previous recordings
+
+        const stream = canvas.captureStream(); // Capture canvas stream for recording
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = function(event) {
+          if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+        mediaRecorder.onstop = saveVideo; // When recording stops, offer save option
+        mediaRecorder.start(); // Start recording
+
+        await compileRandomClips();
+
+        mediaRecorder.stop(); // Stop recording once all clips are played
+        compileButton.disabled = false; // Re-enable button after compilation
+      }
     });
 
-    function handleFiles(files) {
-      videoFiles = Array.from(files);
-      processButton.disabled = videoFiles.length === 0;
+    async function compileRandomClips() {
+      let currentIndex = 0;
+
+      const playNextClip = () => {
+        if (currentIndex >= videoFiles.length) {
+          return; // All clips played
+        }
+
+        const videoSrc = videoFiles[currentIndex];
+        videoElement.src = videoSrc;
+
+        videoElement.addEventListener('loadedmetadata', () => {
+          const videoDuration = videoElement.duration;
+          const minTime = parseInt(minTimeInput.value, 10);
+          const maxTime = parseInt(maxTimeInput.value, 10);
+          
+          // Ensure the max time doesn't exceed the video length
+          const randomStart = Math.random() * Math.max(0, videoDuration - 1); // Start from random point
+          const clipDuration = Math.min(Math.random() * (maxTime - minTime) + minTime, videoDuration - randomStart);
+
+          videoElement.currentTime = randomStart;
+
+          videoElement.play();
+
+          const updateCanvas = () => {
+            // Draw the current video frame on the canvas
+            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+            if (!videoElement.paused && !videoElement.ended) {
+              requestAnimationFrame(updateCanvas);
+            }
+          };
+
+          updateCanvas(); // Start drawing frames
+
+          // Play the random clip for its duration
+          setTimeout(() => {
+            videoElement.pause();
+            currentIndex++; // Move to the next video
+            playNextClip(); // Play the next clip after the current one ends
+          }, clipDuration * 1000);
+        }, { once: true });
+      };
+
+      playNextClip(); // Start playing the first clip
     }
 
-    // Process videos and save clips
-    processButton.addEventListener('click', async () => {
-      processButton.disabled = true;
-      zip = new JSZip();
-
-      for (let file of videoFiles) {
-        const trimmedVideos = await processVideo(file);
-        trimmedVideos.forEach((blob, index) => {
-          zip.file(`${file.name.split('.')[0]}-clip-${index}.mp4`, blob);
-        });
-      }
-
-      // Save the zip
-      zip.generateAsync({ type: 'blob' }).then(function (content) {
-        saveAs(content, 'trimmed-clips.zip');
+    function saveVideo() {
+      const blob = new Blob(recordedChunks, {
+        type: 'video/webm'
       });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = 'compiled_video.webm';
+      document.body.appendChild(a);
+      a.click();
 
-      processButton.disabled = false;
-    });
-
-    async function processVideo(file) {
-      const ffmpeg = await FFmpeg.createFFmpeg({ log: true });
-      await ffmpeg.load();
-
-      const { name } = file;
-      const videoData = await file.arrayBuffer();
-
-      ffmpeg.FS('writeFile', name, new Uint8Array(videoData));
-
-      // Trim into random 4-10 second clips
-      const duration = 10;  // Example duration for trimming
-      const startTime = Math.random() * (duration - 10);  // Random start time
-      const trimmedClips = [];
-
-      for (let i = 0; i < 3; i++) {  // Example trimming into 3 clips
-        const output = `clip-${i}.mp4`;
-        await ffmpeg.run('-i', name, '-ss', `${startTime}`, '-t', '10', '-c', 'copy', output);
-        const data = ffmpeg.FS('readFile', output);
-        trimmedClips.push(new Blob([data.buffer], { type: 'video/mp4' }));
-        ffmpeg.FS('unlink', output);
-      }
-
-      return trimmedClips;
+      // Make save button available to re-download
+      saveButton.style.display = 'block';
     }
-  </script>
 
+    saveButton.addEventListener('click', saveVideo);
+  </script>
 </body>
 </html>
