@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trim and Save Video Clips - Version 1.0.5</title>
+  <title>Trim and Save Video Clips - Version 1.0.6</title>
   <style>
     #dropZone {
       width: 100%;
@@ -35,7 +35,7 @@
   </style>
 </head>
 <body>
-  <h1>Upload and Trim Videos into Random Clips (Version 1.0.5)</h1>
+  <h1>Upload and Trim Videos into Random Clips (Version 1.0.6)</h1>
   
   <!-- Drop zone for files -->
   <div id="dropZone">Drag and drop videos here (up to 50)</div>
@@ -56,7 +56,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/ffmpeg.js/ffmpeg.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js"></script>
 
   <script>
     const dropZone = document.getElementById('dropZone');
@@ -68,12 +68,27 @@
 
     let videoFiles = [];
     let zip = new JSZip();
+    let ffmpeg;  // Declare ffmpeg globally
 
     // Function to log messages in the log box
     function logMessage(message) {
       logBox.textContent += `${message}\n`;
       logBox.scrollTop = logBox.scrollHeight; // Auto-scroll to the latest log
     }
+
+    // Load ffmpeg.js
+    async function loadFFmpeg() {
+      ffmpeg = FFmpeg.createFFmpeg({ log: true });
+      try {
+        await ffmpeg.load();
+        logMessage('FFmpeg loaded successfully.');
+      } catch (error) {
+        logMessage(`Error loading FFmpeg: ${error.message}`);
+      }
+    }
+
+    // Load ffmpeg when the page loads
+    loadFFmpeg();
 
     // Prevent default drag behaviors
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -138,9 +153,6 @@
 
     async function trimAndSaveClip(file) {
       try {
-        const ffmpeg = await FFmpeg.createFFmpeg({ log: true });
-        await ffmpeg.load();
-
         const videoData = await file.arrayBuffer();
         ffmpeg.FS('writeFile', file.name, new Uint8Array(videoData));
 
