@@ -1,1 +1,113 @@
-<!DOCTYPE html><html><head><title>index1.html</title></head><body></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Clip Trimmer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    #video-container {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Upload and Trim Videos</h1>
+  <input type="file" id="video-input" accept="video/*" multiple>
+  <button id="process-button" disabled>Process Videos</button>
+  <button id="save-button" disabled>Save Clips</button>
+
+  <div id="video-container"></div>
+
+  <script>
+    const videoInput = document.getElementById('video-input');
+    const processButton = document.getElementById('process-button');
+    const saveButton = document.getElementById('save-button');
+    const videoContainer = document.getElementById('video-container');
+    let videoFiles = [];
+    let trimmedClips = [];
+
+    videoInput.addEventListener('change', (event) => {
+      videoFiles = Array.from(event.target.files);
+      processButton.disabled = videoFiles.length === 0;
+    });
+
+    processButton.addEventListener('click', async () => {
+      processButton.disabled = true;
+      saveButton.disabled = true;
+      trimmedClips = [];
+
+      for (let file of videoFiles) {
+        const videoURL = URL.createObjectURL(file);
+        const videoElement = await loadVideo(videoURL);
+        const duration = videoElement.duration;
+        const numberOfClips = Math.floor(duration / 10);
+        const clips = [];
+
+        for (let i = 0; i < numberOfClips; i++) {
+          const start = Math.random() * (duration - 10);
+          const length = 4 + Math.random() * 6; // random length between 4 and 10
+          clips.push(trimVideo(videoElement, start, length));
+        }
+
+        await Promise.all(clips);
+      }
+
+      saveButton.disabled = false;
+    });
+
+    saveButton.addEventListener('click', () => {
+      trimmedClips.forEach((clip, index) => {
+        const a = document.createElement('a');
+        a.href = clip;
+        a.download = `clip-${index}.mp4`;
+        a.click();
+      });
+    });
+
+    function loadVideo(src) {
+      return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.src = src;
+        video.addEventListener('loadedmetadata', () => resolve(video));
+      });
+    }
+
+    function trimVideo(videoElement, start, length) {
+      return new Promise((resolve) => {
+        videoElement.currentTime = start;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = videoElement.videoWidth;
+        canvas.height = videoElement.videoHeight;
+
+        videoElement.play();
+
+        videoElement.addEventListener('timeupdate', () => {
+          if (videoElement.currentTime >= start + length) {
+            videoElement.pause();
+            resolve(saveCanvasAsClip(canvas));
+          } else {
+            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+          }
+        });
+      });
+    }
+
+    function saveCanvasAsClip(canvas) {
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          const clipURL = URL.createObjectURL(blob);
+          trimmedClips.push(clipURL);
+          resolve(clipURL);
+        }, 'video/mp4');
+      });
+    }
+  </script>
+
+</body>
+</html>
