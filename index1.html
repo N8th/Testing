@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trim and Save Videos - Version 1.0.9</title>
+  <title>Trim and Save Videos - Version 1.1.0</title>
   <style>
     #dropZone {
       width: 100%;
@@ -29,7 +29,7 @@
   </style>
 </head>
 <body>
-  <h1>Upload Videos, Trim Random Clips, and Save as Zip (Version 1.0.9)</h1>
+  <h1>Upload Videos, Trim Random Clips, and Save as Zip (Version 1.1.0)</h1>
   
   <!-- Drop zone for files -->
   <div id="dropZone">Drag and drop videos here (up to 50)</div>
@@ -59,7 +59,7 @@
     const maxTimeInput = document.getElementById('maxTime');
     let videoFiles = [];
     let zip = new JSZip();
-    let ffmpeg = null;  // Declare ffmpeg globally
+    let ffmpeg = null;
     let isFFmpegLoaded = false;
 
     // Function to log messages in the log box
