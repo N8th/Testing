@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trim and Save Video Clips - Version 1.0.4</title>
+  <title>Trim and Save Video Clips - Version 1.0.5</title>
   <style>
     #dropZone {
       width: 100%;
@@ -17,13 +17,25 @@
     .controls {
       margin-bottom: 10px;
     }
+    #logBox {
+      width: 100%;
+      height: 150px;
+      background-color: #f4f4f4;
+      border: 1px solid #ccc;
+      overflow-y: auto;
+      padding: 10px;
+      font-size: 14px;
+      color: #333;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
     #saveButton {
       display: none;
     }
   </style>
 </head>
 <body>
-  <h1>Upload and Trim Videos into Random Clips (Version 1.0.4)</h1>
+  <h1>Upload and Trim Videos into Random Clips (Version 1.0.5)</h1>
   
   <!-- Drop zone for files -->
   <div id="dropZone">Drag and drop videos here (up to 50)</div>
@@ -39,6 +51,9 @@
   <button id="trimButton" disabled>Trim Videos and Save as Zip</button>
   <button id="saveButton">Save Trimmed Clips</button>
 
+  <!-- Log box for feedback -->
+  <div id="logBox">Log output will appear here...</div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ffmpeg.js/ffmpeg.min.js"></script>
@@ -47,11 +62,18 @@
     const dropZone = document.getElementById('dropZone');
     const trimButton = document.getElementById('trimButton');
     const saveButton = document.getElementById('saveButton');
+    const logBox = document.getElementById('logBox');
     const minTimeInput = document.getElementById('minTime');
     const maxTimeInput = document.getElementById('maxTime');
 
     let videoFiles = [];
     let zip = new JSZip();
+
+    // Function to log messages in the log box
+    function logMessage(message) {
+      logBox.textContent += `${message}\n`;
+      logBox.scrollTop = logBox.scrollHeight; // Auto-scroll to the latest log
+    }
 
     // Prevent default drag behaviors
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -76,13 +98,19 @@
         if (file.type.startsWith('video/')) {
           if (videoFiles.length < 50) { // Limit to 50 videos
             videoFiles.push(file);
+            logMessage(`Video added: ${file.name}`);
+          } else {
+            logMessage(`Maximum of 50 videos reached. Cannot add ${file.name}`);
           }
+        } else {
+          logMessage(`Invalid file type: ${file.name}`);
         }
       }
       
       if (videoFiles.length > 0) {
         trimButton.disabled = false; // Enable trim button when videos are dropped
         dropZone.textContent = `${videoFiles.length} video(s) ready for trimming.`;
+        logMessage(`${videoFiles.length} video(s) ready for trimming.`);
       } else {
         dropZone.textContent = 'Please drop video files!';
       }
@@ -94,6 +122,8 @@
         saveButton.style.display = 'none'; // Hide save button initially
         zip = new JSZip();
 
+        logMessage('Starting to trim videos...');
+
         for (const file of videoFiles) {
           await trimAndSaveClip(file);
         }
@@ -101,30 +131,37 @@
         // Save the zip
         const zipContent = await zip.generateAsync({ type: 'blob' });
         saveAs(zipContent, 'trimmed_clips.zip');
+        logMessage('All videos trimmed and saved as zip.');
         trimButton.disabled = false; // Re-enable button after trimming
       }
     });
 
     async function trimAndSaveClip(file) {
-      const ffmpeg = await FFmpeg.createFFmpeg({ log: true });
-      await ffmpeg.load();
+      try {
+        const ffmpeg = await FFmpeg.createFFmpeg({ log: true });
+        await ffmpeg.load();
 
-      const videoData = await file.arrayBuffer();
-      ffmpeg.FS('writeFile', file.name, new Uint8Array(videoData));
+        const videoData = await file.arrayBuffer();
+        ffmpeg.FS('writeFile', file.name, new Uint8Array(videoData));
 
-      const videoDuration = await getVideoDuration(file);
-      const minTime = parseInt(minTimeInput.value, 10);
-      const maxTime = parseInt(maxTimeInput.value, 10);
-      
-      const randomStart = Math.random() * Math.max(0, videoDuration - 1); // Start from random point
-      const clipDuration = Math.min(Math.random() * (maxTime - minTime) + minTime, videoDuration - randomStart);
-      
-      const outputName = `trimmed-${file.name.split('.')[0]}.mp4`;
-      await ffmpeg.run('-i', file.name, '-ss', `${randomStart}`, '-t', `${clipDuration}`, '-c', 'copy', outputName);
-      const data = ffmpeg.FS('readFile', outputName);
+        const videoDuration = await getVideoDuration(file);
+        const minTime = parseInt(minTimeInput.value, 10);
+        const maxTime = parseInt(maxTimeInput.value, 10);
+        
+        const randomStart = Math.random() * Math.max(0, videoDuration - 1); // Start from random point
+        const clipDuration = Math.min(Math.random() * (maxTime - minTime) + minTime, videoDuration - randomStart);
+        
+        const outputName = `trimmed-${file.name.split('.')[0]}.mp4`;
+        logMessage(`Trimming ${file.name}: Start at ${randomStart.toFixed(2)}s, Duration: ${clipDuration.toFixed(2)}s`);
+        await ffmpeg.run('-i', file.name, '-ss', `${randomStart}`, '-t', `${clipDuration}`, '-c', 'copy', outputName);
+        const data = ffmpeg.FS('readFile', outputName);
 
-      zip.file(outputName, new Blob([data.buffer], { type: 'video/mp4' }));
-      ffmpeg.FS('unlink', file.name); // Clean up file from ffmpeg
+        zip.file(outputName, new Blob([data.buffer], { type: 'video/mp4' }));
+        ffmpeg.FS('unlink', file.name); // Clean up file from ffmpeg
+        logMessage(`${file.name} trimmed successfully.`);
+      } catch (error) {
+        logMessage(`Error trimming ${file.name}: ${error.message}`);
+      }
     }
 
     async function getVideoDuration(file) {
