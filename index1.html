@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trim and Save Video Clips - Version 1.0.6</title>
+  <title>Trim and Save Videos - Version 1.0.8</title>
   <style>
     #dropZone {
       width: 100%;
@@ -13,9 +13,6 @@
       line-height: 200px;
       color: #999;
       margin-bottom: 20px;
-    }
-    .controls {
-      margin-bottom: 10px;
     }
     #logBox {
       width: 100%;
@@ -29,13 +26,10 @@
       margin-top: 10px;
       white-space: pre-wrap;
     }
-    #saveButton {
-      display: none;
-    }
   </style>
 </head>
 <body>
-  <h1>Upload and Trim Videos into Random Clips (Version 1.0.6)</h1>
+  <h1>Upload Videos, Trim Random Clips, and Save as Zip (Version 1.0.8)</h1>
   
   <!-- Drop zone for files -->
   <div id="dropZone">Drag and drop videos here (up to 50)</div>
@@ -49,26 +43,23 @@
   </div>
   
   <button id="trimButton" disabled>Trim Videos and Save as Zip</button>
-  <button id="saveButton">Save Trimmed Clips</button>
 
   <!-- Log box for feedback -->
   <div id="logBox">Log output will appear here...</div>
 
+  <script src="https://cdn.jsdelivr.net/npm/ffmpeg.js/ffmpeg.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js"></script>
 
   <script>
     const dropZone = document.getElementById('dropZone');
     const trimButton = document.getElementById('trimButton');
-    const saveButton = document.getElementById('saveButton');
     const logBox = document.getElementById('logBox');
     const minTimeInput = document.getElementById('minTime');
     const maxTimeInput = document.getElementById('maxTime');
-
     let videoFiles = [];
     let zip = new JSZip();
-    let ffmpeg;  // Declare ffmpeg globally
+    let ffmpeg = null;  // Declare ffmpeg globally
 
     // Function to log messages in the log box
     function logMessage(message) {
@@ -76,8 +67,9 @@
       logBox.scrollTop = logBox.scrollHeight; // Auto-scroll to the latest log
     }
 
-    // Load ffmpeg.js
+    // Load ffmpeg.js when the page loads
     async function loadFFmpeg() {
+      logMessage('Loading FFmpeg...');
       ffmpeg = FFmpeg.createFFmpeg({ log: true });
       try {
         await ffmpeg.load();
@@ -86,8 +78,6 @@
         logMessage(`Error loading FFmpeg: ${error.message}`);
       }
     }
-
-    // Load ffmpeg when the page loads
     loadFFmpeg();
 
     // Prevent default drag behaviors
@@ -134,9 +124,7 @@
     trimButton.addEventListener('click', async function() {
       if (videoFiles.length > 0) {
         trimButton.disabled = true; // Disable button during trimming
-        saveButton.style.display = 'none'; // Hide save button initially
         zip = new JSZip();
-
         logMessage('Starting to trim videos...');
 
         for (const file of videoFiles) {
@@ -186,5 +174,6 @@
       });
     }
   </script>
+
 </body>
 </html>
