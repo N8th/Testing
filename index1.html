@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trim and Save Videos - Version 1.0.8</title>
+  <title>Trim and Save Videos - Version 1.0.9</title>
   <style>
     #dropZone {
       width: 100%;
@@ -29,7 +29,7 @@
   </style>
 </head>
 <body>
-  <h1>Upload Videos, Trim Random Clips, and Save as Zip (Version 1.0.8)</h1>
+  <h1>Upload Videos, Trim Random Clips, and Save as Zip (Version 1.0.9)</h1>
   
   <!-- Drop zone for files -->
   <div id="dropZone">Drag and drop videos here (up to 50)</div>
@@ -47,7 +47,7 @@
   <!-- Log box for feedback -->
   <div id="logBox">Log output will appear here...</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/ffmpeg.js/ffmpeg.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
@@ -60,6 +60,7 @@
     let videoFiles = [];
     let zip = new JSZip();
     let ffmpeg = null;  // Declare ffmpeg globally
+    let isFFmpegLoaded = false;
 
     // Function to log messages in the log box
     function logMessage(message) {
@@ -73,6 +74,7 @@
       ffmpeg = FFmpeg.createFFmpeg({ log: true });
       try {
         await ffmpeg.load();
+        isFFmpegLoaded = true;
         logMessage('FFmpeg loaded successfully.');
       } catch (error) {
         logMessage(`Error loading FFmpeg: ${error.message}`);
@@ -122,6 +124,11 @@
     });
 
     trimButton.addEventListener('click', async function() {
+      if (!isFFmpegLoaded) {
+        logMessage('FFmpeg is not loaded yet. Please wait.');
+        return;
+      }
+
       if (videoFiles.length > 0) {
         trimButton.disabled = true; // Disable button during trimming
         zip = new JSZip();
